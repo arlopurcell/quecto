@@ -1,6 +1,6 @@
-use termion::{raw::{IntoRawMode, RawTerminal}, input::TermRead, event::{Event, Key}};
-use std::{io::{Write, stdin, stdout, Error, Stdout, BufRead, BufReader}, collections::LinkedList, iter::once};
-use std::fs::OpenOptions;
+use std::{collections::LinkedList, iter::once};
+
+use crate::log;
 
 pub struct Buffer {
     // TODO make these not pub
@@ -79,6 +79,13 @@ impl Buffer {
     
     pub fn current_line_len(&self) -> usize {
         self.current.len()
+    }
+
+    pub fn visible_lines(&self, screen_height: usize, current_line_pos: usize) -> Vec<&String> {
+        let inner_iter = self.pre.iter().rev().take(current_line_pos).rev()
+            .chain(once(&self.current))
+            .chain(self.post.iter().take(screen_height - current_line_pos - 1));
+        inner_iter.collect()
     }
 }
 

@@ -39,7 +39,7 @@ fn run() -> Result<(), Error> {
     Ok(())
 }
 
-fn log(msg: &str) {
+pub fn log(msg: &str) {
     // TODO create file if not exists
     let mut file = OpenOptions::new()
         .write(true)

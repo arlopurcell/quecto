@@ -2,7 +2,7 @@ use termion::{raw::{IntoRawMode, RawTerminal}, input::TermRead, event::{Event, K
 use std::{io::{Write, stdin, stdout, Error, Stdout, BufRead, BufReader}, collections::LinkedList, iter::once};
 use std::fs::OpenOptions;
 
-use crate::buffer::Buffer;
+use crate::{buffer::Buffer, log};
 
 enum EditorMode {
     Normal,
@@ -178,14 +178,9 @@ impl EditorState {
             EditorMode::Normal => termion::cursor::SteadyBlock.as_ref(),
         })?;
 
-        // TODO move into Buffer impl
-        let on_screen_lines = self.buffer.pre.iter().rev().take(self.cursor.y as usize).rev()
-            .chain(once(&self.buffer.current))
-            .chain(self.buffer.post.iter().take((term_height - self.cursor.y - 1) as usize));
-        // TODO re-implement logging
-        //log("split lines");
 
-        for (index, line) in on_screen_lines.enumerate() {
+        let on_screen_lines = self.buffer.visible_lines(term_height as usize, self.cursor.y as usize);
+        for (index, line) in on_screen_lines.iter().enumerate() {
             //log(&format!("writing line {} at index {}", line, index));
             term.write(format!(
                     "{}~ {}", 
