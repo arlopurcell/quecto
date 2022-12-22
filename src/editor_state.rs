@@ -21,6 +21,8 @@ pub struct EditorState {
     buffer: Buffer,
     cursor: RelativePosition,
 
+    current_line_screen_pos: usize,
+
     command_buffer: String,
     command_cursor: usize,
 
@@ -37,6 +39,8 @@ impl EditorState {
 
             buffer: Buffer::new(),
             cursor: RelativePosition::new(),
+            
+            current_line_screen_pos: 0,
 
             command_buffer: "".to_string(),
             command_cursor: 0,
@@ -45,25 +49,24 @@ impl EditorState {
         }
     }
 
-    pub fn update(&mut self, evt: Event) -> Result<(), Error> {
+    pub fn update(&mut self, evt: Event, term_height: u16) -> Result<(), Error> {
+        let drawable_height = term_height - 2;
         match self.mode {
             EditorMode::Normal => match evt {
-                    Event::Key(Key::Char('q')) => {
-                        self.exit = true;
-                    }
-                    Event::Key(Key::Char('j')) | Event::Key(Key::Down) => self.down(),
+                    Event::Key(Key::Char('j')) | Event::Key(Key::Down) => self.down(drawable_height),
                     Event::Key(Key::Char('k')) | Event::Key(Key::Up) => self.up(),
                     Event::Key(Key::Char('h')) | Event::Key(Key::Left) => self.left(),
                     Event::Key(Key::Char('l')) | Event::Key(Key::Right) => self.right(),
                     Event::Key(Key::Char('i')) => self.mode = EditorMode::Insert,
                     Event::Key(Key::Char('a')) => {
-                        self.cursor.right();
+                        self.right();
                         self.mode = EditorMode::Insert;
                     }
                     // TODO A, I
                     Event::Key(Key::Char('o')) => {
                         self.buffer.new_empty_line();
-                        self.cursor.down();
+                        //self.cursor.down();
+                        self.cursor_down(drawable_height);
                         self.cursor.full_left();
                         self.mode = EditorMode::Insert;
                     }
@@ -81,12 +84,13 @@ impl EditorState {
                     self.trim_cursor();
                 }
                 Event::Key(Key::Up) => self.up(),
-                Event::Key(Key::Down) => self.down(),
+                Event::Key(Key::Down) => self.down(drawable_height),
                 Event::Key(Key::Left) => self.left(),
                 Event::Key(Key::Right) => self.right(),
                 Event::Key(Key::Char('\n')) => {
                     self.buffer.new_line(self.cursor.x as usize);
-                    self.cursor.down();
+                    //self.cursor.down();
+                    self.cursor_down(drawable_height);
                     self.cursor.full_left();
                     self.mode = EditorMode::Insert;
                 }
@@ -100,13 +104,15 @@ impl EditorState {
                         self.buffer.delete(self.cursor.x as usize);
                     } else {
                         if let Some(new_cursor_x) = self.buffer.merge_line_to_prev() {
-                            self.cursor.up();
+                            //self.cursor.up();
+                            self.cursor_up();
                             self.cursor.go_to_x(new_cursor_x);
                         }
                     }
                 }
                 Event::Key(Key::Delete) => {
                     self.buffer.delete(self.cursor.x as usize);
+                    // TODO implement deleting next new line
                 }
                 _ => ()
             }
@@ -141,16 +147,31 @@ impl EditorState {
 
     fn up(&mut self) {
         if self.buffer.up() {
-            self.cursor.up();
-            self.trim_cursor();
+            self.cursor_up();
         }
     }
 
-    fn down(&mut self) {
-        if self.buffer.down() {
-            self.cursor.down();
-            self.trim_cursor();
+    fn cursor_up(&mut self) {
+        if self.current_line_screen_pos != 0 {
+            self.current_line_screen_pos -= 1;
+            self.cursor.up();
         }
+        self.trim_cursor();
+    }
+
+    fn down(&mut self, drawable_height: u16) {
+        if self.buffer.down() {
+            self.cursor_down(drawable_height);
+        }
+    }
+
+    fn cursor_down(&mut self, drawable_height: u16) {
+        if self.current_line_screen_pos != drawable_height as usize - 1 {
+            self.current_line_screen_pos += 1;
+            log(format!("new clsp: {}", self.current_line_screen_pos).as_ref());
+            self.cursor.down();
+        }
+        self.trim_cursor();
     }
 
     fn left(&mut self) {
@@ -163,14 +184,19 @@ impl EditorState {
     }
 
     fn trim_cursor(&mut self) {
-        self.cursor.x = u16::min(self.cursor.x, self.buffer.current_line_len() as u16 - match self.mode {
-            EditorMode::Insert => 0,
-            _ => 1,
-        })
+        if self.buffer.current_line_len() == 0 {
+            self.cursor.x = 0;
+        } else {
+            self.cursor.x = u16::min(self.cursor.x, self.buffer.current_line_len() as u16 - match self.mode {
+                EditorMode::Insert => 0,
+                _ => 1,
+            });
+        }
     }
      
     pub fn render(&mut self, term: &mut RawTerminal<Stdout>) -> Result<(), Error> {
         let (_term_width, term_height) = termion::terminal_size()?;
+        let drawable_height = term_height - 2;
         term.write(termion::clear::All.as_ref())?;
         term.write(match self.mode {
             EditorMode::Insert => termion::cursor::BlinkingBar.as_ref(),
@@ -179,7 +205,7 @@ impl EditorState {
         })?;
 
 
-        let on_screen_lines = self.buffer.visible_lines(term_height as usize, self.cursor.y as usize);
+        let on_screen_lines = self.buffer.visible_lines(drawable_height as usize, self.current_line_screen_pos);
         for (index, line) in on_screen_lines.iter().enumerate() {
             //log(&format!("writing line {} at index {}", line, index));
             term.write(format!(

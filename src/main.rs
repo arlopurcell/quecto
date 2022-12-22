@@ -27,7 +27,8 @@ fn run() -> Result<(), Error> {
     
     for c in stdin.events() {
         let evt = c?;
-        editor_state.update(evt)?;
+        let (_term_width, term_height) = termion::terminal_size()?;
+        editor_state.update(evt, term_height)?;
         if editor_state.exit {
             stdout.write(termion::clear::All.as_ref())?;
             stdout.flush()?;

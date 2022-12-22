@@ -82,6 +82,7 @@ impl Buffer {
     }
 
     pub fn visible_lines(&self, screen_height: usize, current_line_pos: usize) -> Vec<&String> {
+        log(format!("current line pos {}", current_line_pos).as_ref());
         let inner_iter = self.pre.iter().rev().take(current_line_pos).rev()
             .chain(once(&self.current))
             .chain(self.post.iter().take(screen_height - current_line_pos - 1));
