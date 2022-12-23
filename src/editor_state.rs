@@ -168,7 +168,6 @@ impl EditorState {
     fn cursor_down(&mut self, drawable_height: u16) {
         if self.current_line_screen_pos != drawable_height as usize - 1 {
             self.current_line_screen_pos += 1;
-            log(format!("new clsp: {}", self.current_line_screen_pos).as_ref());
             self.cursor.down();
         }
         self.trim_cursor();
@@ -205,17 +204,11 @@ impl EditorState {
         })?;
 
 
-        let on_screen_lines = self.buffer.visible_lines(drawable_height as usize, self.current_line_screen_pos);
-        for (index, line) in on_screen_lines.iter().enumerate() {
-            //log(&format!("writing line {} at index {}", line, index));
-            term.write(format!(
-                    "{}~ {}", 
-                    termion::cursor::Goto(1, index as u16 + 1),
-                    //&line[0..(term_width - 2) as usize]
-                    line
-            ).as_bytes())?;
+        for index in 0..drawable_height as i32 {
+            let current_line_offset = index - (self.current_line_screen_pos as i32);
+            term.write(format!("{}~ ", termion::cursor::Goto(1, index as u16 + 1)).as_bytes())?;
+            self.buffer.render_line(term, current_line_offset)?;
         }
-        //log("drew lines");
 
         // draw status bar
         self.draw_status_bar(term, term_height)?;
@@ -274,20 +267,14 @@ impl EditorState {
                 self.file_name = Some(file_name.to_string());
             }
             if let Some(file_name) = &self.file_name {
-                let mut file = OpenOptions::new()
+                let file = OpenOptions::new()
                     .create(true)
                     .write(true)
                     .truncate(true)
                     .open(file_name)
                     .unwrap(); // TODO handle failure to open file
 
-                for line in self.buffer.pre.iter() {
-                    write!(&mut file, "{}\n", line)?;
-                }
-                write!(&mut file, "{}\n", self.buffer.current)?;
-                for line in self.buffer.post.iter() {
-                    write!(&mut file, "{}\n", line)?;
-                }
+                self.buffer.write_to_file(file)?;
             } else {
                 // TODO handle no file name
             }

@@ -1,12 +1,13 @@
-use std::{collections::LinkedList, iter::once};
+use std::{collections::LinkedList, iter::once, io::{Stdout, Error, Write}, fs::File};
+
+use termion::raw::RawTerminal;
 
 use crate::log;
 
 pub struct Buffer {
-    // TODO make these not pub
-    pub pre: LinkedList<String>,
-    pub current: String,
-    pub post: LinkedList<String>,
+    pre: LinkedList<String>,
+    current: String,
+    post: LinkedList<String>,
 }
 
 impl Buffer {
@@ -81,12 +82,34 @@ impl Buffer {
         self.current.len()
     }
 
-    pub fn visible_lines(&self, screen_height: usize, current_line_pos: usize) -> Vec<&String> {
-        log(format!("current line pos {}", current_line_pos).as_ref());
-        let inner_iter = self.pre.iter().rev().take(current_line_pos).rev()
-            .chain(once(&self.current))
-            .chain(self.post.iter().take(screen_height - current_line_pos - 1));
-        inner_iter.collect()
+    pub fn render_line(&self, term: &mut RawTerminal<Stdout>, current_line_offset: i32) -> Result<(), Error> {
+        match current_line_offset {
+            0 => {
+                term.write(self.current.as_bytes())?;
+            }
+            clo if clo < 0 => {
+                if let Some(line) = self.pre.iter().rev().nth((clo * -1) as usize - 1) {
+                    term.write(line.as_bytes())?;
+                }
+            }
+            clo => { // must be positive
+                if let Some(line) = self.post.iter().nth(clo as usize - 1) {
+                    term.write(line.as_bytes())?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn write_to_file(&self, mut file: File) -> Result<(), Error> {
+        for line in self.pre.iter() {
+            write!(&mut file, "{}\n", line)?;
+        }
+        write!(&mut file, "{}\n", self.current)?;
+        for line in self.post.iter() {
+            write!(&mut file, "{}\n", line)?;
+        }
+        Ok(())
     }
 }
 
